@@ -73,6 +73,7 @@ export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: R
       return { id: `r_${id}` };
     },
     recentMedia: async () => opts.media ?? [],
+    thumbnail: async () => null,
     mediaInfo: async (id) => opts.media?.find((m) => m.id === id) ?? { id, timestamp: "" },
     findMediaByShortcode: async (_u, sc) => opts.shortcodes?.[sc] ?? null,
     mediaComments: async (m) => {
