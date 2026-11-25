@@ -1,0 +1,24 @@
+{
+  "name": "ig-comment-dm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "set-token": "tsx --env-file=.env scripts/set-token.ts",
+    "reprocess": "tsx --env-file=.env scripts/reprocess.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
+    "@vercel/functions": "^3.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}
