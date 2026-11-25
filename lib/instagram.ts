@@ -29,10 +29,16 @@ export interface IgComment {
   replies?: { data: IgComment[] };
 }
 
+export interface MediaSummary {
+  id: string;
+  timestamp: string;
+  comments_count?: number;
+}
+
 export interface IgApi {
   sendPrivateReply(igUserId: string, commentId: string, text: string): Promise<{ message_id: string }>;
   replyToComment(commentId: string, text: string): Promise<{ id: string }>;
-  recentMedia(igUserId: string, limit?: number): Promise<{ id: string; timestamp: string }[]>;
+  recentMedia(igUserId: string, limit?: number): Promise<MediaSummary[]>;
   mediaComments(mediaId: string, maxPages?: number): Promise<IgComment[]>;
   /** Datos de la cuenta. Con Instagram Login usa /me; con Unified login, /{IG_USER_ID}. */
   account(igUserId?: string): Promise<{ id: string; username: string }>;
@@ -92,8 +98,8 @@ export function createIgApi(
     sendPrivateReply: (igUserId, commentId, text) =>
       call("POST", `/${igUserId}/messages`, { recipient: { comment_id: commentId }, message: { text } }),
     replyToComment: (commentId, text) => call("POST", `/${commentId}/replies`, { message: text }),
-    async recentMedia(igUserId, limit = 25) {
-      const r = await call<{ data: { id: string; timestamp: string }[] }>("GET", `/${igUserId}/media?fields=id,timestamp&limit=${limit}`);
+    async recentMedia(igUserId, limit = 50) {
+      const r = await call<{ data: MediaSummary[] }>("GET", `/${igUserId}/media?fields=id,timestamp,comments_count&limit=${limit}`);
       return r.data;
     },
     async mediaComments(mediaId, maxPages = 40) {

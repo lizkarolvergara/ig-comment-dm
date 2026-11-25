@@ -44,6 +44,10 @@ export interface Store {
   updateEvent(commentId: string, patch: Partial<EventRow> & { locked_until?: string | null }): Promise<void>;
   knownComments(mediaId: string): Promise<Map<string, Pick<EventRow, "matched" | "dm_sent" | "replied" | "attempts">>>;
   recentEvents(limit: number): Promise<EventRow[]>;
+  mediaStates(): Promise<Map<string, { comments_count: number | null; scanned_at: string }>>;
+  saveMediaState(mediaId: string, commentsCount: number | null): Promise<void>;
+  /** Posts con comentarios que coincidieron pero quedaron a medias (para reintentar). */
+  pendingMediaIds(maxAttempts: number): Promise<Set<string>>;
 }
 
 export function supabaseStore(client?: SupabaseClient): Store {
@@ -84,6 +88,29 @@ export function supabaseStore(client?: SupabaseClient): Store {
         await db.from("events").select("comment_id,matched,dm_sent,replied,attempts").eq("media_id", mediaId),
       ) as (EventRow & { comment_id: string })[];
       return new Map(data.map((r) => [r.comment_id, r]));
+    },
+    async mediaStates() {
+      const data = check(await db.from("media_state").select("*")) as { media_id: string; comments_count: number | null; scanned_at: string }[];
+      return new Map(data.map((r) => [r.media_id, r]));
+    },
+    async saveMediaState(mediaId, commentsCount) {
+      check(
+        await db
+          .from("media_state")
+          .upsert({ media_id: mediaId, comments_count: commentsCount, scanned_at: new Date().toISOString() }),
+      );
+    },
+    async pendingMediaIds(maxAttempts) {
+      const data = check(
+        await db
+          .from("events")
+          .select("media_id,error")
+          .eq("matched", true)
+          .or("dm_sent.eq.false,replied.eq.false")
+          .lte("attempts", maxAttempts),
+      ) as { media_id: string | null; error: string | null }[];
+      // Los que vencieron la ventana de 7 días ya no se pueden completar.
+      return new Set(data.filter((r) => r.media_id && !r.error?.includes("7 días")).map((r) => r.media_id!));
     },
     async recentEvents(limit) {
       return check(await db.from("events").select("*").order("created_at", { ascending: false }).limit(limit)) as EventRow[];
