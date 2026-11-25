@@ -40,7 +40,7 @@ export async function GET(req: Request) {
 <title>Estado del bot</title>
 <style>body{font:14px system-ui;margin:16px;max-width:1000px}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}.err{color:#b00}.card{display:inline-block;padding:8px 12px;margin:0 8px 8px 0;border:1px solid #ddd;border-radius:8px}</style>
 <h1>Bot @${esc(s.ig_username)}</h1>
-<div class="card">Token: <b>${daysLeft ?? "?"}</b> días ${s.last_refresh_error ? `<span class="err">(${esc(s.last_refresh_error)})</span>` : ""}</div>
+<div class="card">Token: <b>${daysLeft === null ? "no caduca" : `${daysLeft} días`}</b> ${s.last_refresh_error ? `<span class="err">(${esc(s.last_refresh_error)})</span>` : ""}</div>
 <div class="card">Último chequeo: ${esc(s.last_poll_at ? new Date(s.last_poll_at).toLocaleString("es", { timeZone: TZ }) : "nunca")} ${s.last_poll_error ? `<span class="err">${esc(s.last_poll_error)}</span>` : "✅"}</div>
 <div class="card">Coincidencias: <b>${matched.length}</b> · completas: <b>${ok}</b> · con error: <b>${failed.length}</b></div>
 <p><a href="?token=${esc(url.searchParams.get("token"))}&format=csv">Descargar registro (CSV)</a></p>

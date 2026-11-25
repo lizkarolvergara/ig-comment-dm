@@ -82,17 +82,34 @@ describe("pollMedia", () => {
 });
 
 describe("loadDeps", () => {
-  it("guarda IG_ACCESS_TOKEN la primera vez", async () => {
+  const withFetch = async (body: object, fn: () => Promise<void>) => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify(body))) as any;
+    try { await fn(); } finally { globalThis.fetch = orig; }
+  };
+  it("Unified login: usa el token del entorno sin guardarlo y registra la cuenta", async () => {
+    const { loadDeps } = await import("../lib/context.js");
+    const { store, state } = memoryStore([LUPA], { access_token: null, ig_user_id: null, ig_username: null });
+    process.env.IG_ACCESS_TOKEN = "SUAT";
+    process.env.IG_USER_ID = "1784";
+    try {
+      await withFetch({ id: "1784", username: "hueleanaranjas" }, async () => void (await loadDeps(store)));
+    } finally {
+      delete process.env.IG_ACCESS_TOKEN;
+      delete process.env.IG_USER_ID;
+    }
+    expect(state()).toMatchObject({ access_token: null, ig_user_id: "1784", ig_username: "hueleanaranjas" });
+  });
+  it("Instagram Login: guarda IG_ACCESS_TOKEN la primera vez", async () => {
     const { loadDeps } = await import("../lib/context.js");
     const { store, state } = memoryStore([LUPA], { access_token: null, ig_user_id: null });
     process.env.IG_ACCESS_TOKEN = "ENV_TOK";
-    const orig = globalThis.fetch;
-    globalThis.fetch = (async () => new Response(JSON.stringify({ user_id: "ME2", username: "liz" }))) as any;
+    process.env.GRAPH_HOST = "graph.instagram.com";
     try {
-      await loadDeps(store);
+      await withFetch({ user_id: "ME2", username: "liz" }, async () => void (await loadDeps(store)));
     } finally {
-      globalThis.fetch = orig;
       delete process.env.IG_ACCESS_TOKEN;
+      delete process.env.GRAPH_HOST;
     }
     expect(state()).toMatchObject({ access_token: "ENV_TOK", ig_user_id: "ME2", ig_username: "liz" });
   });

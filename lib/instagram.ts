@@ -1,4 +1,12 @@
-const HOST = "https://graph.instagram.com";
+/**
+ * Host de la Graph API.
+ * - "Unified login" (apps nuevas, token de usuario del sistema que no caduca): graph.facebook.com  ← por defecto
+ * - "Instagram Login" (apps antiguas, token de 60 días): graph.instagram.com
+ */
+export function graphHost(): string {
+  return `https://${process.env.GRAPH_HOST ?? "graph.facebook.com"}`;
+}
+export const isInstagramLogin = () => graphHost().includes("graph.instagram.com");
 
 export class GraphError extends Error {
   constructor(
@@ -24,9 +32,10 @@ export interface IgComment {
 export interface IgApi {
   sendPrivateReply(igUserId: string, commentId: string, text: string): Promise<{ message_id: string }>;
   replyToComment(commentId: string, text: string): Promise<{ id: string }>;
-  recentMedia(limit?: number): Promise<{ id: string; timestamp: string }[]>;
+  recentMedia(igUserId: string, limit?: number): Promise<{ id: string; timestamp: string }[]>;
   mediaComments(mediaId: string, maxPages?: number): Promise<IgComment[]>;
-  me(): Promise<{ user_id: string; username: string }>;
+  /** Datos de la cuenta. Con Instagram Login usa /me; con Unified login, /{IG_USER_ID}. */
+  account(igUserId?: string): Promise<{ id: string; username: string }>;
   refreshToken(): Promise<{ access_token: string; expires_in: number }>;
 }
 
@@ -37,8 +46,9 @@ const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 341, 613]);
 
 export function createIgApi(
   getToken: () => string,
-  opts: { version?: string; fetchImpl?: typeof fetch; retries?: number; baseDelayMs?: number } = {},
+  opts: { version?: string; host?: string; fetchImpl?: typeof fetch; retries?: number; baseDelayMs?: number } = {},
 ): IgApi {
+  const HOST = opts.host ?? graphHost();
   const version = opts.version ?? process.env.GRAPH_API_VERSION ?? "v25.0";
   const f = opts.fetchImpl ?? fetch;
   const retries = opts.retries ?? 3;
@@ -82,8 +92,8 @@ export function createIgApi(
     sendPrivateReply: (igUserId, commentId, text) =>
       call("POST", `/${igUserId}/messages`, { recipient: { comment_id: commentId }, message: { text } }),
     replyToComment: (commentId, text) => call("POST", `/${commentId}/replies`, { message: text }),
-    async recentMedia(limit = 25) {
-      const r = await call<{ data: { id: string; timestamp: string }[] }>("GET", `/me/media?fields=id,timestamp&limit=${limit}`);
+    async recentMedia(igUserId, limit = 25) {
+      const r = await call<{ data: { id: string; timestamp: string }[] }>("GET", `/${igUserId}/media?fields=id,timestamp&limit=${limit}`);
       return r.data;
     },
     async mediaComments(mediaId, maxPages = 40) {
@@ -93,11 +103,18 @@ export function createIgApi(
       for (let i = 0; path && i < maxPages; i++) {
         const r: { data: IgComment[]; paging?: { next?: string } } = await call("GET", path);
         out.push(...r.data);
-        path = r.paging?.next ? r.paging.next.replace(/^https:\/\/graph\.instagram\.com\/v[\d.]+/, "") : null;
+        path = r.paging?.next ? r.paging.next.replace(/^https:\/\/graph\.(instagram|facebook)\.com\/v[\d.]+/, "") : null;
       }
       return out;
     },
-    me: () => call("GET", `/me?fields=user_id,username`),
+    async account(igUserId) {
+      if (HOST.includes("graph.instagram.com")) {
+        const r = await call<{ user_id: string; username: string }>("GET", `/me?fields=user_id,username`);
+        return { id: r.user_id, username: r.username };
+      }
+      if (!igUserId) throw new Error("Falta IG_USER_ID");
+      return call("GET", `/${igUserId}?fields=id,username`);
+    },
     refreshToken: () =>
       call(
         "GET",

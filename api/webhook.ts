@@ -16,7 +16,7 @@ export function GET(req: Request) {
 
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (!verifySignature(raw, req.headers.get("x-hub-signature-256"), process.env.IG_APP_SECRET ?? "")) {
+  if (!verifySignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET ?? process.env.IG_APP_SECRET ?? "")) {
     return new Response("Invalid signature", { status: 401 });
   }
   let payload: unknown;

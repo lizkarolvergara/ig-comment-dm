@@ -1,11 +1,28 @@
 import { alert } from "./alert.js";
-import { createIgApi } from "./instagram.js";
+import { createIgApi, isInstagramLogin } from "./instagram.js";
 import type { Store } from "./store.js";
 
 const DAY = 24 * 3600 * 1000;
 
-/** Renueva el token si vence en menos de 20 días. Meta exige que tenga al menos 24 h. */
+/** Unified login: el token no caduca, así que solo comprobamos que siga funcionando (p. ej. si lo revocan). */
+export async function checkTokenHealth(store: Store, fetchImpl?: typeof fetch) {
+  const s = await store.getState();
+  const token = process.env.IG_ACCESS_TOKEN ?? "";
+  try {
+    const acc = await createIgApi(() => token, { fetchImpl }).account(process.env.IG_USER_ID ?? s.ig_user_id ?? undefined);
+    await store.updateState({ last_refresh_error: null, token_refreshed_at: new Date().toISOString() });
+    return { ok: true, username: acc.username };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await store.updateState({ last_refresh_error: msg });
+    await alert(`El token de Instagram no funciona: ${msg}`);
+    return { ok: false, error: msg };
+  }
+}
+
+/** Cron diario. Instagram Login: renueva el token si vence en menos de 20 días (Meta exige que tenga al menos 24 h). */
 export async function refreshIfNeeded(store: Store, now = new Date(), fetchImpl?: typeof fetch) {
+  if (!isInstagramLogin()) return checkTokenHealth(store, fetchImpl);
   const s = await store.getState();
   if (!s.access_token || !s.token_expires_at) {
     await alert("No hay token guardado. Ejecuta npm run set-token.");

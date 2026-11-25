@@ -27,7 +27,9 @@ export async function pollMedia(mediaId: string, deps: Deps, source = "poll") {
 
 /** Revisa los posts de los últimos 7 días (el límite de Meta para private replies). */
 export async function pollRecent(deps: Deps, now = new Date()) {
-  const media = (await deps.ig.recentMedia(25)).filter(
+  const { ig_user_id } = await deps.store.getState();
+  if (!ig_user_id) throw new Error("Falta ig_user_id en app_state");
+  const media = (await deps.ig.recentMedia(ig_user_id, 25)).filter(
     (m) => now.getTime() - new Date(m.timestamp).getTime() < SEVEN_DAYS_MS + 24 * 3600 * 1000,
   );
   const results = [];

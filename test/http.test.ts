@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createIgApi, GraphError } from "../lib/instagram.js";
-import { refreshIfNeeded } from "../lib/refresh.js";
+import { checkTokenHealth, refreshIfNeeded } from "../lib/refresh.js";
 import { verifySignature } from "../lib/signature.js";
 import { parseCommentsPayload } from "../lib/webhook.js";
 import { memoryStore } from "./memory.js";
@@ -35,7 +35,7 @@ describe("createIgApi", () => {
     const f = vi.fn(async () => json(200, { recipient_id: "U1", message_id: "m1" }));
     await createIgApi(() => "TOK", { fetchImpl: f as any, version: "v25.0" }).sendPrivateReply("ME", "C1", "hola");
     const [url, init] = f.mock.calls[0] as any;
-    expect(url).toBe("https://graph.instagram.com/v25.0/ME/messages");
+    expect(url).toBe("https://graph.facebook.com/v25.0/ME/messages");
     expect(JSON.parse(init.body)).toEqual({ recipient: { comment_id: "C1" }, message: { text: "hola" } });
     expect(init.headers.Authorization).toBe("Bearer TOK");
   });
@@ -57,16 +57,18 @@ describe("createIgApi", () => {
   });
 });
 
-describe("refreshIfNeeded", () => {
+describe("refreshIfNeeded (Instagram Login)", () => {
+  beforeEach(() => void (process.env.GRAPH_HOST = "graph.instagram.com"));
+  afterEach(() => void delete process.env.GRAPH_HOST);
   const now = new Date("2026-12-01T00:00:00Z");
   it("no renueva si faltan más de 20 días", async () => {
     const { store } = memoryStore([], { token_expires_at: "2027-01-15T00:00:00Z", token_refreshed_at: "2026-11-01T00:00:00Z" });
-    expect((await refreshIfNeeded(store, now)).refreshed).toBe(false);
+    expect(((await refreshIfNeeded(store, now)) as any).refreshed).toBe(false);
   });
   it("renueva y guarda la nueva fecha", async () => {
     const { store, state } = memoryStore([], { token_expires_at: "2026-12-10T00:00:00Z", token_refreshed_at: "2026-10-11T00:00:00Z" });
     const f = vi.fn(async () => new Response(JSON.stringify({ access_token: "NEW", token_type: "bearer", expires_in: 5184000 })));
-    expect((await refreshIfNeeded(store, now, f as any)).refreshed).toBe(true);
+    expect(((await refreshIfNeeded(store, now, f as any)) as any).refreshed).toBe(true);
     expect(state().access_token).toBe("NEW");
     expect(state().token_expires_at).toBe("2027-01-30T00:00:00.000Z");
     expect(String((f.mock.calls[0] as any)[0])).toContain("/refresh_access_token?grant_type=ig_refresh_token&access_token=tok");
@@ -74,7 +76,30 @@ describe("refreshIfNeeded", () => {
   it("guarda el error si falla", async () => {
     const { store, state } = memoryStore([], { token_expires_at: "2026-12-10T00:00:00Z" });
     const f = vi.fn(async () => new Response(JSON.stringify({ error: { message: "expired", code: 190 } }), { status: 400 }));
-    expect((await refreshIfNeeded(store, now, f as any)).refreshed).toBe(false);
+    expect(((await refreshIfNeeded(store, now, f as any)) as any).refreshed).toBe(false);
     expect(state().last_refresh_error).toContain("expired");
+  });
+});
+
+describe("Unified login (graph.facebook.com)", () => {
+  it("usa graph.facebook.com y /{IG_USER_ID} por defecto", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ id: "1784", username: "liz" })));
+    const acc = await createIgApi(() => "T", { fetchImpl: f as any, version: "v25.0" }).account("1784");
+    expect(acc).toEqual({ id: "1784", username: "liz" });
+    expect((f.mock.calls[0] as any)[0]).toBe("https://graph.facebook.com/v25.0/1784?fields=id,username");
+  });
+  it("lista media de la cuenta por id", async () => {
+    const f = vi.fn(async () => new Response(JSON.stringify({ data: [] })));
+    await createIgApi(() => "T", { fetchImpl: f as any, version: "v25.0" }).recentMedia("1784");
+    expect((f.mock.calls[0] as any)[0]).toBe("https://graph.facebook.com/v25.0/1784/media?fields=id,timestamp&limit=25");
+  });
+  it("el cron diario solo verifica el token y avisa si falla", async () => {
+    const { store, state } = memoryStore([]);
+    const bad = vi.fn(async () => new Response(JSON.stringify({ error: { message: "Invalid OAuth", code: 190 } }), { status: 400 }));
+    expect((await refreshIfNeeded(store, new Date(), bad as any)) as any).toMatchObject({ ok: false });
+    expect(state().last_refresh_error).toContain("Invalid OAuth");
+    const good = vi.fn(async () => new Response(JSON.stringify({ id: "ME", username: "liz" })));
+    expect(await checkTokenHealth(store, good as any)).toMatchObject({ ok: true });
+    expect(state().last_refresh_error).toBeNull();
   });
 });

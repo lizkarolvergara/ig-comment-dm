@@ -57,7 +57,7 @@ export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: R
     },
     recentMedia: async () => opts.media ?? [],
     mediaComments: async (m) => opts.comments?.[m] ?? [],
-    me: async () => ({ user_id: "ME", username: "hueleanaranjas" }),
+    account: async () => ({ id: "ME", username: "hueleanaranjas" }),
     refreshToken: async () => ({ access_token: "new", expires_in: 5184000 }),
   };
   return { ig, calls };
