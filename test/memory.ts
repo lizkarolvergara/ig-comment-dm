@@ -21,6 +21,17 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     updateState: async (p) => void (st = { ...st, ...p }),
     activeKeywords: async () => keywords.filter((k) => k.active).map((k) => ({ ...k })),
     updateKeyword: async (id, p) => void Object.assign(keywords.find((k) => k.id === id)!, p),
+    allKeywords: async () => keywords.map((k) => ({ ...k })),
+    createKeyword: async (row) => {
+      const k = { ...(row as any), id: keywords.length + 100 };
+      keywords.push(k);
+      return k;
+    },
+    deleteKeyword: async (id) => {
+      if ([...events.values()].some((e) => e.keyword_id === id)) throw new Error("tiene envíos");
+      keywords.splice(keywords.findIndex((k) => k.id === id), 1);
+    },
+    ruleStats: async () => ({}),
     insertEvent: async (row) => {
       if (events.has(row.comment_id)) return false;
       events.set(row.comment_id, { ...row, dm_sent: false, dm_undeliverable: false, replied: false, attempts: 0, error: null });

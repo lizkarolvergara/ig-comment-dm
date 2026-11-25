@@ -8,7 +8,7 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
 - **Webhook (`/api/webhook`)**: tiempo real. Meta solo envía webhooks de `comments` a apps con **Advanced Access (App Review)**. Mientras tanto, el lector cubre todo y después queda como respaldo.
 - Ambos usan la misma lógica (`lib/process.ts`): ignora tus propios comentarios, registra cada comentario en `events` (idempotente por `comment_id`), reserva el comentario con un lock en la base de datos para no enviar dos veces, manda el DM primero y luego la respuesta pública, y guarda el resultado o el error. Si algo falla, el siguiente chequeo reintenta solo lo que faltó (hasta 6 intentos).
 - **Token**: con Unified login es un token de usuario del sistema que no caduca y vive solo en la variable `IG_ACCESS_TOKEN`. El cron diario (`/api/refresh-token`) comprueba que siga funcionando y avisa a `ALERT_URL` si no. Si usas una app antigua con Instagram Login (`GRAPH_HOST=graph.instagram.com`), ese mismo cron renueva el token de 60 días.
-- **Estado (`/api/status?token=...`)**: días que le quedan al token, último chequeo, registro de envíos y descarga en CSV (prueba para Lupa).
+- **Panel (`/`)**: login con contraseña (`ADMIN_PASSWORD`, sesión firmada de 30 días). Desde ahí creas, editas, activas o borras reglas por post (al guardar comprueba que el link sea de tu cuenta), y ves el estado del lector y del token y el registro de envíos, con descarga CSV como prueba para las marcas.
 
 ## Configuración
 
