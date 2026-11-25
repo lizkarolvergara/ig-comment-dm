@@ -32,16 +32,42 @@ describe("processComment", () => {
     expect(calls.dm).toHaveLength(0);
   });
 
-  it("si falla el DM, guarda el error y al reintentar solo hace lo que falta", async () => {
+  it("si el DM falla por algo temporal, no responde en público hasta resolverlo", async () => {
     const { store, events } = memoryStore([LUPA]);
     const { ig, calls } = fakeIg({ failDm: 1 });
     expect(await processComment(c("C4", "lupa"), "webhook", { store, ig })).toBe("partial");
-    expect(events.get("C4")).toMatchObject({ dm_sent: false, replied: true });
+    expect(events.get("C4")).toMatchObject({ dm_sent: false, replied: false });
     expect(events.get("C4")?.error).toContain("boom dm");
     expect(await processComment(c("C4", "lupa"), "poll", { store, ig })).toBe("done");
     expect(calls.dm).toEqual(["C4"]);
-    expect(calls.reply).toHaveLength(1); // no repite la respuesta pública
+    expect(calls.reply).toEqual([{ id: "C4", text: LUPA.public_reply }]);
     expect(events.get("C4")?.error).toBeNull();
+  });
+
+  it("si el DM no se puede entregar, responde con la alternativa y no reintenta", async () => {
+    const { GraphError } = await import("../lib/instagram.js");
+    const { store, events } = memoryStore([{ ...LUPA, fallback_reply: "Escríbeme primero 💌" }]);
+    const { ig, calls } = fakeIg();
+    ig.sendPrivateReply = async () => {
+      throw new GraphError("This person isn't available right now (code 551)", 400, 551);
+    };
+    expect(await processComment(c("C7", "lupa"), "poll", { store, ig })).toBe("fallback");
+    expect(calls.reply).toEqual([{ id: "C7", text: "Escríbeme primero 💌" }]);
+    expect(events.get("C7")).toMatchObject({ dm_sent: false, dm_undeliverable: true, replied: true });
+    expect(events.get("C7")?.error).toContain("551");
+    expect(await processComment(c("C7", "lupa"), "poll", { store, ig })).toBe("duplicate");
+  });
+
+  it("usa la alternativa por defecto si la regla no tiene una", async () => {
+    const { GraphError } = await import("../lib/instagram.js");
+    const { DEFAULT_FALLBACK_REPLY } = await import("../lib/process.js");
+    const { store } = memoryStore([LUPA]);
+    const { ig, calls } = fakeIg();
+    ig.sendPrivateReply = async () => {
+      throw new GraphError("x", 400, 10);
+    };
+    await processComment(c("C8", "lupa"), "poll", { store, ig });
+    expect(DEFAULT_FALLBACK_REPLY.split("|").map((t) => t.trim())).toContain(calls.reply[0].text);
   });
 
   it("no envía DM si el comentario tiene más de 7 días", async () => {
@@ -50,6 +76,7 @@ describe("processComment", () => {
     const old = new Date(Date.now() - 8 * 86400000).toISOString();
     expect(await processComment(c("C5", "lupa", { createdAt: old }), "poll", { store, ig })).toBe("expired");
     expect(calls.dm).toHaveLength(0);
+    expect(calls.reply).toHaveLength(1); // responde con la alternativa
     expect(events.get("C5")?.error).toContain("7 días");
   });
 

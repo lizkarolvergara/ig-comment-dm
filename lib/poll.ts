@@ -23,7 +23,7 @@ export async function pollMedia(mediaId: string, deps: Deps, source = "poll", no
   const counts: Partial<Record<Outcome, number>> = {};
   for (const c of comments) {
     const k = known.get(c.id);
-    if (k && (!k.matched || (k.dm_sent && k.replied) || k.attempts > MAX_ATTEMPTS)) continue;
+    if (k && (!k.matched || k.replied || k.attempts > MAX_ATTEMPTS)) continue;
     const outcome = await processComment(
       { id: c.id, text: c.text ?? "", mediaId, fromId: c.from?.id, username: c.from?.username ?? c.username, createdAt: c.timestamp },
       source,

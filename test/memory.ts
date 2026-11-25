@@ -23,12 +23,12 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     updateKeyword: async (id, p) => void Object.assign(keywords.find((k) => k.id === id)!, p),
     insertEvent: async (row) => {
       if (events.has(row.comment_id)) return false;
-      events.set(row.comment_id, { ...row, dm_sent: false, replied: false, attempts: 0, error: null });
+      events.set(row.comment_id, { ...row, dm_sent: false, dm_undeliverable: false, replied: false, attempts: 0, error: null });
       return true;
     },
     claim: async (id) => {
       const e = events.get(id);
-      if (!e || !e.matched || (e.dm_sent && e.replied)) return null;
+      if (!e || !e.matched || e.replied) return null;
       if (e.locked_until && new Date(e.locked_until) > new Date()) return null;
       e.locked_until = new Date(Date.now() + 60000).toISOString();
       e.attempts++;
@@ -41,7 +41,7 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     mediaStates: async () => new Map(mediaState),
     saveMediaState: async (id, n) => void mediaState.set(id, { comments_count: n, scanned_at: new Date().toISOString() }),
     pendingMediaIds: async () =>
-      new Set([...events.values()].filter((e) => e.matched && (!e.dm_sent || !e.replied)).map((e) => e.media_id!)),
+      new Set([...events.values()].filter((e) => e.matched && !e.replied).map((e) => e.media_id!)),
   };
   return { store, events, mediaState, state: () => st };
 }

@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     .slice(0, 100)
     .map(
       (e) =>
-        `<tr><td>${esc(new Date(e.created_at!).toLocaleString("es", { timeZone: TZ }))}</td><td>@${esc(e.username)}</td><td>${esc(e.text)}</td><td>${yes(e.dm_sent)}</td><td>${yes(e.replied)}</td><td class="err">${esc(e.error)}</td></tr>`,
+        `<tr><td>${esc(new Date(e.created_at!).toLocaleString("es", { timeZone: TZ }))}</td><td>@${esc(e.username)}</td><td>${esc(e.text)}</td><td>${e.dm_sent ? "✅" : e.dm_undeliverable ? "🚫 no entregable" : "—"}</td><td>${yes(e.replied)}</td><td class="err">${esc(e.error)}</td></tr>`,
     )
     .join("");
 

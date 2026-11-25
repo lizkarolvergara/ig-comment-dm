@@ -5,6 +5,8 @@ export interface Keyword {
   public_reply: string;
   media_id: string | null;
   post_url?: string | null;
+  /** Respuesta pública si no se pudo entregar el DM. Vacía = texto por defecto. */
+  fallback_reply?: string | null;
   active: boolean;
 }
 

@@ -12,6 +12,7 @@ export interface EventRow {
   matched: boolean;
   keyword_id: number | null;
   dm_sent: boolean;
+  dm_undeliverable?: boolean;
   dm_sent_at?: string | null;
   dm_message_id?: string | null;
   replied: boolean;
@@ -39,11 +40,11 @@ export interface Store {
   activeKeywords(): Promise<Keyword[]>;
   updateKeyword(id: number, patch: Partial<Keyword> & { resolve_error?: string | null }): Promise<void>;
   /** Inserta si no existe. Devuelve true si era nuevo. */
-  insertEvent(row: Omit<EventRow, "dm_sent" | "replied" | "attempts" | "error">): Promise<boolean>;
+  insertEvent(row: Omit<EventRow, "dm_sent" | "dm_undeliverable" | "replied" | "attempts" | "error">): Promise<boolean>;
   /** Reserva el evento (lock ~60s). null si ya está completo o lo tiene otro proceso. */
   claim(commentId: string): Promise<EventRow | null>;
   updateEvent(commentId: string, patch: Partial<EventRow> & { locked_until?: string | null }): Promise<void>;
-  knownComments(mediaId: string): Promise<Map<string, Pick<EventRow, "matched" | "dm_sent" | "replied" | "attempts">>>;
+  knownComments(mediaId: string): Promise<Map<string, Pick<EventRow, "matched" | "dm_sent" | "dm_undeliverable" | "replied" | "attempts">>>;
   recentEvents(limit: number): Promise<EventRow[]>;
   mediaStates(): Promise<Map<string, { comments_count: number | null; scanned_at: string }>>;
   saveMediaState(mediaId: string, commentsCount: number | null): Promise<void>;
@@ -89,7 +90,7 @@ export function supabaseStore(client?: SupabaseClient): Store {
     },
     async knownComments(mediaId) {
       const data = check(
-        await db.from("events").select("comment_id,matched,dm_sent,replied,attempts").eq("media_id", mediaId),
+        await db.from("events").select("comment_id,matched,dm_sent,dm_undeliverable,replied,attempts").eq("media_id", mediaId),
       ) as (EventRow & { comment_id: string })[];
       return new Map(data.map((r) => [r.comment_id, r]));
     },
@@ -110,7 +111,7 @@ export function supabaseStore(client?: SupabaseClient): Store {
           .from("events")
           .select("media_id,error")
           .eq("matched", true)
-          .or("dm_sent.eq.false,replied.eq.false")
+          .eq("replied", false)
           .lte("attempts", maxAttempts),
       ) as { media_id: string | null; error: string | null }[];
       // Los que vencieron la ventana de 7 días ya no se pueden completar.
