@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/poll.ts": { "maxDuration": 120 },
+    "api/webhook.ts": { "maxDuration": 60 }
+  },
+  "crons": [{ "path": "/api/refresh-token", "schedule": "0 12 * * *" }]
+}

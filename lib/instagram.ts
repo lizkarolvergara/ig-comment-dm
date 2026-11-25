@@ -1,0 +1,109 @@
+const HOST = "https://graph.instagram.com";
+
+export class GraphError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public code?: number,
+    public subcode?: number,
+    public transient = false,
+  ) {
+    super(message);
+  }
+}
+
+export interface IgComment {
+  id: string;
+  text: string;
+  timestamp?: string;
+  username?: string;
+  from?: { id: string; username?: string };
+  replies?: { data: IgComment[] };
+}
+
+export interface IgApi {
+  sendPrivateReply(igUserId: string, commentId: string, text: string): Promise<{ message_id: string }>;
+  replyToComment(commentId: string, text: string): Promise<{ id: string }>;
+  recentMedia(limit?: number): Promise<{ id: string; timestamp: string }[]>;
+  mediaComments(mediaId: string, maxPages?: number): Promise<IgComment[]>;
+  me(): Promise<{ user_id: string; username: string }>;
+  refreshToken(): Promise<{ access_token: string; expires_in: number }>;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Errores de Meta que vale la pena reintentar: rate limit / temporales.
+const TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 341, 613]);
+
+export function createIgApi(
+  getToken: () => string,
+  opts: { version?: string; fetchImpl?: typeof fetch; retries?: number; baseDelayMs?: number } = {},
+): IgApi {
+  const version = opts.version ?? process.env.GRAPH_API_VERSION ?? "v25.0";
+  const f = opts.fetchImpl ?? fetch;
+  const retries = opts.retries ?? 3;
+  const baseDelay = opts.baseDelayMs ?? 500;
+
+  async function call<T>(method: "GET" | "POST", path: string, body?: unknown, versioned = true): Promise<T> {
+    const url = `${HOST}${versioned ? `/${version}` : ""}${path}`;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) await sleep(baseDelay * 3 ** (attempt - 1));
+      try {
+        const res = await f(url, {
+          method,
+          headers: {
+            Authorization: `Bearer ${getToken()}`,
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const json: any = await res.json().catch(() => ({}));
+        if (res.ok && !json.error) return json as T;
+        const e = json.error ?? {};
+        const transient = res.status >= 500 || res.status === 429 || e.is_transient === true || TRANSIENT_CODES.has(e.code);
+        lastErr = new GraphError(
+          `${e.message ?? `HTTP ${res.status}`}${e.code ? ` (code ${e.code}${e.error_subcode ? `/${e.error_subcode}` : ""})` : ""}`,
+          res.status,
+          e.code,
+          e.error_subcode,
+          transient,
+        );
+        if (!transient) throw lastErr;
+      } catch (err) {
+        if (err instanceof GraphError && !err.transient) throw err;
+        lastErr = err; // error de red o transitorio: reintentar
+      }
+    }
+    throw lastErr;
+  }
+
+  return {
+    sendPrivateReply: (igUserId, commentId, text) =>
+      call("POST", `/${igUserId}/messages`, { recipient: { comment_id: commentId }, message: { text } }),
+    replyToComment: (commentId, text) => call("POST", `/${commentId}/replies`, { message: text }),
+    async recentMedia(limit = 25) {
+      const r = await call<{ data: { id: string; timestamp: string }[] }>("GET", `/me/media?fields=id,timestamp&limit=${limit}`);
+      return r.data;
+    },
+    async mediaComments(mediaId, maxPages = 40) {
+      const fields = "id,text,timestamp,username,from,replies{id,text,timestamp,username,from}";
+      const out: IgComment[] = [];
+      let path: string | null = `/${mediaId}/comments?fields=${encodeURIComponent(fields)}&limit=50`;
+      for (let i = 0; path && i < maxPages; i++) {
+        const r: { data: IgComment[]; paging?: { next?: string } } = await call("GET", path);
+        out.push(...r.data);
+        path = r.paging?.next ? r.paging.next.replace(/^https:\/\/graph\.instagram\.com\/v[\d.]+/, "") : null;
+      }
+      return out;
+    },
+    me: () => call("GET", `/me?fields=user_id,username`),
+    refreshToken: () =>
+      call(
+        "GET",
+        `/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(getToken())}`,
+        undefined,
+        false,
+      ),
+  };
+}
