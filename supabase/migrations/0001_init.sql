@@ -34,6 +34,8 @@ create table public.events (
 );
 create index events_pending_idx on public.events (created_at)
   where matched and (not dm_sent or not replied);
+create index events_media_idx on public.events (media_id);
+create index events_keyword_idx on public.events (keyword_id);
 
 -- Estado de la app (una sola fila): token y salud
 create table public.app_state (
