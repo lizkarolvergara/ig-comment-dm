@@ -89,12 +89,12 @@
     <input id="f_post" placeholder="https://www.instagram.com/reel/…" required>
     <label for="f_kw">Palabra clave <small>· variantes separadas por comas: LUPA, LUPPA</small></label>
     <textarea id="f_kw" required style="min-height:90px"></textarea>
-    <label for="f_dm">Mensaje del DM</label>
+    <label for="f_dm">Mensaje del DM <small>· usa {usuario} para poner su @</small></label>
     <textarea id="f_dm" maxlength="1000" required></textarea>
-    <label for="f_pub">Respuesta pública <small>· varias opciones separadas por |</small></label>
+    <label for="f_pub">Respuesta pública <small>· varias opciones separadas por | · {usuario} = su @</small></label>
     <textarea id="f_pub" required></textarea>
     <label for="f_fb">Respuesta si el DM no llega <small>· opcional</small></label>
-    <textarea id="f_fb" placeholder="Por defecto: ¡No pude enviarte el mensaje! 😢 Escríbeme por DM y te lo paso."></textarea>
+    <textarea id="f_fb" placeholder="Por defecto: {usuario} ¡No pude enviarte el mensaje! 😢 Escríbeme por DM y te lo paso."></textarea>
     <div class="msg err" id="formMsg"></div>
     <div class="row">
       <button type="button" id="cancel">Cancelar</button>

@@ -67,7 +67,9 @@ describe("processComment", () => {
       throw new GraphError("x", 400, 10);
     };
     await processComment(c("C8", "lupa"), "poll", { store, ig });
-    expect(DEFAULT_FALLBACK_REPLY.split("|").map((t) => t.trim())).toContain(calls.reply[0].text);
+    const { fillTemplate } = await import("../lib/match.js");
+    expect(DEFAULT_FALLBACK_REPLY.split("|").map((t) => fillTemplate(t.trim(), "fan"))).toContain(calls.reply[0].text);
+    expect(calls.reply[0].text.startsWith("@fan ")).toBe(true);
   });
 
   it("no envía DM si el comentario tiene más de 7 días", async () => {
@@ -214,5 +216,18 @@ describe("reglas por post", () => {
     const { ig } = fakeIg();
     await pollRecent({ store, ig }, now);
     expect((kws[0] as any).resolve_error).toContain("No encontré");
+  });
+});
+
+describe("{usuario}", () => {
+  it("se reemplaza en la respuesta pública y en el DM", async () => {
+    const { store } = memoryStore([{ ...LUPA, public_reply: "{usuario} ¡revisa tu DM!", dm_message: "Hola {usuario}: https://lupa.art" }]);
+    const { ig, calls } = fakeIg();
+    const dms: string[] = [];
+    const orig = ig.sendPrivateReply;
+    ig.sendPrivateReply = async (u, id, t) => (dms.push(t), orig(u, id, t));
+    await processComment(c("C9", "lupa", { username: "fan_9" }), "poll", { store, ig });
+    expect(calls.reply[0].text).toBe("@fan_9 ¡revisa tu DM!");
+    expect(dms[0]).toBe("Hola @fan_9: https://lupa.art");
   });
 });

@@ -1,5 +1,5 @@
 import { GraphError, type IgApi } from "./instagram.js";
-import { pickKeyword, pickVariant } from "./match.js";
+import { fillTemplate, pickKeyword, pickVariant } from "./match.js";
 import type { Store } from "./store.js";
 
 export interface IncomingComment {
@@ -73,7 +73,7 @@ export async function processComment(c: IncomingComment, source: string, deps: D
       errors.push("DM: falta ig_user_id en app_state");
     } else {
       try {
-        const r = await ig.sendPrivateReply(state.ig_user_id, c.id, keyword.dm_message);
+        const r = await ig.sendPrivateReply(state.ig_user_id, c.id, fillTemplate(keyword.dm_message, ev.username ?? c.username));
         ev.dm_sent = true;
         await store.updateEvent(c.id, { dm_sent: true, dm_sent_at: now.toISOString(), dm_message_id: r.message_id });
       } catch (e) {
@@ -94,7 +94,7 @@ export async function processComment(c: IncomingComment, source: string, deps: D
   if (!ev.replied && (ev.dm_sent || ev.dm_undeliverable)) {
     const text = ev.dm_sent ? keyword.public_reply : keyword.fallback_reply || DEFAULT_FALLBACK_REPLY;
     try {
-      const r = await ig.replyToComment(c.id, pickVariant(text));
+      const r = await ig.replyToComment(c.id, fillTemplate(pickVariant(text), ev.username ?? c.username));
       ev.replied = true;
       await store.updateEvent(c.id, { replied: true, replied_at: now.toISOString(), reply_id: r.id });
     } catch (e) {
@@ -109,7 +109,7 @@ export async function processComment(c: IncomingComment, source: string, deps: D
 }
 
 export const DEFAULT_FALLBACK_REPLY =
-  "¡No pude enviarte el mensaje! 😢 Escríbeme por DM y te lo paso. | No me deja enviarte el DM 🙈 Escríbeme primero y te lo mando.";
+  "{usuario} ¡No pude enviarte el mensaje! 😢 Escríbeme por DM y te lo paso. | {usuario} No me deja enviarte el DM 🙈 Escríbeme primero y te lo mando.";
 
 /**
  * Errores de Meta que significan "a esta persona no se le puede entregar el DM" (no se reintentan).

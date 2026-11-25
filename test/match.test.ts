@@ -48,3 +48,17 @@ describe("variantes separadas por comas", () => {
     expect(containsKeyword("quiero informacion", "quiero info")).toBe(false);
   });
 });
+
+describe("fillTemplate", async () => {
+  const { fillTemplate } = await import("../lib/match.js");
+  it("pone el @ del usuario", () => {
+    expect(fillTemplate("{usuario} ¡te lo envié! 📩", "fan_1")).toBe("@fan_1 ¡te lo envié! 📩");
+    expect(fillTemplate("Hola {Usuario}, aquí está", "fan_1")).toBe("Hola @fan_1, aquí está");
+    expect(fillTemplate("{ user } hey", "@fan_1")).toBe("@fan_1 hey");
+  });
+  it("sin usuario conocido lo quita limpio", () => {
+    expect(fillTemplate("{usuario} ¡te lo envié!", null)).toBe("¡te lo envié!");
+    expect(fillTemplate("Hola {usuario}, aquí está", undefined)).toBe("Hola, aquí está");
+  });
+  it("sin marcador no cambia nada", () => expect(fillTemplate("¡Listo! 📩", "x")).toBe("¡Listo! 📩"));
+});

@@ -58,3 +58,13 @@ export function pickVariant(template: string, rand: () => number = Math.random):
   const options = template.split("|").map((s) => s.trim()).filter(Boolean);
   return options[Math.floor(rand() * options.length)] ?? template.trim();
 }
+
+/** Reemplaza {usuario} (o {user}) por @usuario. Si no se conoce el usuario, lo quita sin dejar espacios dobles. */
+export function fillTemplate(text: string, username?: string | null): string {
+  const tag = username ? `@${username.replace(/^@/, "")}` : "";
+  return text
+    .replace(/\{\s*(usuario|user)\s*\}/gi, tag)
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^[ \t]+|[ \t]+$/gm, "")
+    .replace(/[ \t]+([,.!?])/g, "$1");
+}
