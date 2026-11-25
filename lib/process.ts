@@ -1,3 +1,4 @@
+import { alert as defaultAlert } from "./alert.js";
 import { GraphError, type IgApi } from "./instagram.js";
 import { pickKeyword, pickVariant } from "./match.js";
 import type { Store } from "./store.js";
@@ -15,6 +16,8 @@ export interface Deps {
   store: Store;
   ig: IgApi;
   now?: () => Date;
+  /** Aviso al celular (ALERT_URL). Se puede reemplazar en las pruebas. */
+  alert?: (message: string) => Promise<void>;
 }
 
 export const MAX_ATTEMPTS = 6;
@@ -103,6 +106,12 @@ export async function processComment(c: IncomingComment, source: string, deps: D
   }
 
   await store.updateEvent(c.id, { error: errors.length ? errors.join(" · ") : null, locked_until: null });
+  // Último intento sin completar: el bot deja de reintentar, así que avisamos una sola vez.
+  if (lastAttempt && !ev.replied) {
+    await (deps.alert ?? defaultAlert)(
+      `No pude responder el comentario de @${ev.username ?? c.username ?? "?"} ("${(c.text ?? "").slice(0, 60)}"). Revisa "Sin responder" en el panel. ${errors.join(" · ")}`,
+    );
+  }
   if (errors.some((e) => e.includes("más de 7 días"))) return "expired";
   if (ev.dm_undeliverable && ev.replied) return "fallback";
   return ev.dm_sent && ev.replied ? "done" : "partial";

@@ -40,3 +40,7 @@ npm run reprocess -- <MEDIA_ID>   # reprocesar un post (sin ID: últimos 7 días
 - Un solo private reply por comentario, dentro de los 7 días desde que se publicó.
 - Después del DM solo puedes volver a escribirle si la persona responde, dentro de 24 horas.
 - Los comentarios en cuentas privadas no generan webhooks.
+
+## Sin responder (monitoreo)
+
+En el panel, la sección **Sin responder** muestra por post los comentarios que coincidieron con una regla pero no se completaron: *En curso*, *Reintentando*, *Falló* (el bot dejó de intentar), *Sin DM* (se respondió pidiendo que te escriba) y *Vencido* (pasaron los 7 días de Meta). Con **Reintentar** el lector lo vuelve a procesar en el próximo minuto, sin repetir el DM si ya se envió. Si `ALERT_URL` está configurada, llega un aviso cuando el bot se rinde con un comentario.

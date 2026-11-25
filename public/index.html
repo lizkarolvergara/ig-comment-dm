@@ -52,6 +52,13 @@
   .msg { margin-top: 10px; min-height: 1.2em; }
   #login { max-width: 380px; margin: 12vh auto 0; }
   .hidden { display: none !important; }
+  .pgroup { display: grid; grid-template-columns: 64px 1fr; gap: 8px 16px; }
+  .pgroup + .pgroup { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .pitem { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+  .pitem + .pitem { margin-top: 10px; }
+  .pitem .meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .tag { display: inline-block; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; background: var(--chip); }
+  .tag.fallo { color: var(--err); } .tag.reintentando, .tag.sin-dm { color: var(--warn); } .tag.vencido, .tag.en-curso { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -76,6 +83,9 @@
 
     <h2>Reglas por post <button class="primary" id="newRule">+ Nueva regla</button></h2>
     <div class="card" id="rules"><p style="color:var(--muted)">Cargando…</p></div>
+
+    <h2>Sin responder <small id="pendingCount" style="color:var(--muted);font-weight:400;font-size:14px"></small></h2>
+    <div class="card" id="pending"><p style="color:var(--muted);margin:0">Cargando…</p></div>
 
     <h2>Registro <a class="btn" href="/api/status?format=csv">Descargar CSV</a></h2>
     <div class="card scroll"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Comentario</th><th>Regla</th><th>DM</th><th>Pública</th><th>Error</th></tr></thead><tbody id="events"></tbody></table></div>
@@ -124,7 +134,7 @@ function show(which) {
 }
 
 async function load() {
-  const [st, rs] = await Promise.all([api("/api/status"), api("/api/rules")]);
+  const [st, rs, pd] = await Promise.all([api("/api/status"), api("/api/rules"), api("/api/pending")]);
   show("app");
   rules = rs.rules;
   $("#account").textContent = st.account ? "@" + st.account : "";
@@ -135,6 +145,7 @@ async function load() {
     <div class="card stat"><small>DMs enviados</small><b>${st.totals.dm}</b><small>${st.totals.matched} coincidencias</small></div>
     <div class="card stat"><small>Sin DM / con error</small><b class="${st.totals.withError ? "warn" : ""}">${st.totals.fallback} / ${st.totals.withError}</b><small>respuesta alternativa / error</small></div>`;
   renderRules();
+  renderPending(pd.groups);
   const byId = Object.fromEntries(rules.map((r) => [r.id, r.keyword.split(",")[0]]));
   $("#events").innerHTML = st.events.length ? st.events.map((e) => `<tr>
       <td>${fmt(e.created_at)}</td><td>@${esc(e.username)}</td><td>${esc(e.text)}</td><td>${esc(byId[e.keyword_id] ?? "")}</td>
@@ -171,6 +182,38 @@ function renderRules() {
     </div>`;
   }).join("");
 }
+
+const STATUS = { fallo: "Falló", reintentando: "Reintentando", "en-curso": "En curso", "sin-dm": "Sin DM", vencido: "Vencido" };
+const ago = (d) => { const m = Math.round((Date.now() - new Date(d)) / 60000); return m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`; };
+const left = (h) => h >= 48 ? `quedan ${Math.floor(h / 24)} días para el DM` : h > 0 ? `<span class="err">quedan ${h} h para el DM</span>` : "";
+
+function renderPending(groups) {
+  const n = groups.reduce((a, g) => a + g.items.length, 0);
+  const urgent = groups.reduce((a, g) => a + g.items.filter((i) => i.status === "fallo" || i.status === "reintentando").length, 0);
+  $("#pendingCount").innerHTML = n ? `· ${n}${urgent ? ` <span class="err">(${urgent} por revisar)</span>` : ""}` : "";
+  if (!n) { $("#pending").innerHTML = `<p class="ok" style="margin:0">✓ Todo respondido.</p>`; return; }
+  $("#pending").innerHTML = groups.map((g) => {
+    const thumb = g.media_id
+      ? `<a href="${esc(g.post_url)}" target="_blank" rel="noopener"><img class="thumb" loading="lazy" alt="" src="/api/thumb?media=${esc(g.media_id)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'thumb empty',textContent:'🖼'}))"></a>`
+      : `<div class="thumb empty">🖼</div>`;
+    return `<div class="pgroup">${thumb}<div>
+      <div class="meta" style="margin-bottom:6px">${g.keyword ? `<span class="chip">${esc(g.keyword)}</span>` : ""}
+        ${g.post_url ? `<a href="${esc(g.post_url)}" target="_blank" rel="noopener">${esc(shortUrl(g.post_url))}</a>` : ""}</div>
+      ${g.items.map((i) => `<div class="pitem"><div>
+          <span class="tag ${i.status}">${STATUS[i.status]}</span> <b>@${esc(i.username)}</b>: ${esc(i.text)}
+          <div class="meta">${ago(i.at)}${i.status !== "sin-dm" && i.status !== "vencido" ? " · " + left(i.hoursLeft) : ""}</div>
+          <div class="meta">${esc(i.reason)}</div></div>
+          ${i.canRetry ? `<button data-retry="${esc(i.comment_id)}">Reintentar</button>` : ""}</div>`).join("")}
+    </div></div>`;
+  }).join("");
+}
+
+$("#pending").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-retry]"); if (!b) return;
+  b.disabled = true; b.textContent = "En cola…";
+  try { await api("/api/pending?comment=" + encodeURIComponent(b.dataset.retry), { method: "POST" }); b.textContent = "Se reintenta en 1 min"; }
+  catch (e) { if (e.message !== "401") { b.disabled = false; b.textContent = "Reintentar"; alert(e.message); } }
+});
 
 function openEditor(rule) {
   editing = rule;

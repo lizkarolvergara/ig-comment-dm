@@ -56,6 +56,10 @@ export interface Store {
   saveMediaState(mediaId: string, commentsCount: number | null): Promise<void>;
   /** Posts con comentarios que coincidieron pero quedaron a medias (para reintentar). */
   pendingMediaIds(maxAttempts: number): Promise<Set<string>>;
+  /** Coincidencias sin completar (sin respuesta pública o sin DM) desde una fecha, para el monitoreo. */
+  unresolvedEvents(sinceIso: string): Promise<EventRow[]>;
+  /** Vuelve a poner el evento en cola: el lector lo reintenta en el próximo minuto. */
+  resetEvent(commentId: string): Promise<boolean>;
 }
 
 export function supabaseStore(client?: SupabaseClient): Store {
@@ -146,6 +150,30 @@ export function supabaseStore(client?: SupabaseClient): Store {
       ) as { media_id: string | null; error: string | null }[];
       // Los que vencieron la ventana de 7 días ya no se pueden completar.
       return new Set(data.filter((r) => r.media_id && !r.error?.includes("7 días")).map((r) => r.media_id!));
+    },
+    async unresolvedEvents(sinceIso) {
+      return check(
+        await db
+          .from("events")
+          .select("*")
+          .eq("matched", true)
+          .or("replied.eq.false,dm_sent.eq.false")
+          .gte("created_at", sinceIso)
+          .order("created_at", { ascending: false })
+          .limit(300),
+      ) as EventRow[];
+    },
+    async resetEvent(commentId) {
+      const data = check(
+        await db
+          .from("events")
+          .update({ attempts: 0, error: null, locked_until: null, dm_undeliverable: false, updated_at: new Date().toISOString() })
+          .eq("comment_id", commentId)
+          .eq("matched", true)
+          .eq("replied", false)
+          .select("comment_id"),
+      ) as unknown[];
+      return data.length > 0;
     },
     async recentEvents(limit) {
       return check(await db.from("events").select("*").order("created_at", { ascending: false }).limit(limit)) as EventRow[];
