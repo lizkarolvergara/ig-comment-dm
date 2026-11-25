@@ -28,12 +28,21 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** ¿El texto contiene la palabra clave como palabra completa? ("quiero LUPA!!" sí, "lupanar" no) */
+/**
+ * ¿El texto contiene la palabra clave como palabra completa? ("quiero LUPA!!" sí, "lupanar" no)
+ * La palabra puede traer variantes separadas por comas para cubrir errores: "LUPA, LUPPA, LOPA".
+ * También acepta frases: "quiero info".
+ */
 export function containsKeyword(text: string, keyword: string): boolean {
-  const kw = normalize(keyword).trim();
-  if (!kw) return false;
-  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegex(kw)}($|[^\\p{L}\\p{N}])`, "u");
-  return re.test(normalize(text));
+  const t = normalize(text);
+  return keyword
+    .split(",")
+    .map((k) => normalize(k).trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .some((kw) => {
+      const pattern = kw.split(" ").map(escapeRegex).join("\\s+");
+      return new RegExp(`(^|[^\\p{L}\\p{N}])${pattern}($|[^\\p{L}\\p{N}])`, "u").test(t);
+    });
 }
 
 /** Elige la palabra clave activa que aplica: primero las del post, luego las globales. */

@@ -37,3 +37,14 @@ describe("shortcodeFromUrl", async () => {
     ["https://lupa.art", null],
   ])("%s", (u, sc) => expect(shortcodeFromUrl(u)).toBe(sc));
 });
+
+describe("variantes separadas por comas", () => {
+  const kw = "LUPA, LUPPA, lópa";
+  it.each(["luppa porfa", "LOPA", "quiero lupa", "Lópa!"])("sí: %s", (t) => expect(containsKeyword(t, kw)).toBe(true));
+  it.each(["lupanar", "lup", "hola"])("no: %s", (t) => expect(containsKeyword(t, kw)).toBe(false));
+  it("ignora comas sobrantes", () => expect(containsKeyword("lupa", "LUPA,, ")).toBe(true));
+  it("acepta frases", () => {
+    expect(containsKeyword("Quiero   INFO please", "quiero info")).toBe(true);
+    expect(containsKeyword("quiero informacion", "quiero info")).toBe(false);
+  });
+});
