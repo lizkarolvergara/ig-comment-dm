@@ -21,7 +21,7 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
    ```
    `public_reply` acepta variantes separadas por `|` (se elige una al azar para no repetir siempre el mismo texto). `media_id` opcional para limitar la palabra a un post.
 4. **Variables de entorno**: copia `.env.example` a `.env` y, en Vercel, a *Settings → Environment Variables*.
-5. **Token**: `IG_ACCESS_TOKEN=<token> npm run set-token`.
+5. **Token**: ponlo en Vercel como `IG_ACCESS_TOKEN`. La primera ejecución lo guarda en Supabase; desde ahí se renueva solo. (Alternativa local: `npm run set-token`.)
 6. **Vercel**: importa el repo y despliega. Luego ejecuta `supabase/cron.sql` en el SQL editor de Supabase.
 7. **Webhook (después del App Review)**: callback `https://TU-APP.vercel.app/api/webhook`, verify token = `IG_VERIFY_TOKEN`, suscribir el campo `comments`.
 

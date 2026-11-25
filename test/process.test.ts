@@ -80,3 +80,20 @@ describe("pollMedia", () => {
     expect(calls.dm.sort()).toEqual(["A", "B"]);
   });
 });
+
+describe("loadDeps", () => {
+  it("guarda IG_ACCESS_TOKEN la primera vez", async () => {
+    const { loadDeps } = await import("../lib/context.js");
+    const { store, state } = memoryStore([LUPA], { access_token: null, ig_user_id: null });
+    process.env.IG_ACCESS_TOKEN = "ENV_TOK";
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ user_id: "ME2", username: "liz" }))) as any;
+    try {
+      await loadDeps(store);
+    } finally {
+      globalThis.fetch = orig;
+      delete process.env.IG_ACCESS_TOKEN;
+    }
+    expect(state()).toMatchObject({ access_token: "ENV_TOK", ig_user_id: "ME2", ig_username: "liz" });
+  });
+});
