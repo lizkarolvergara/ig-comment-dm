@@ -41,6 +41,8 @@ export interface IgApi {
   recentMedia(igUserId: string, limit?: number): Promise<MediaSummary[]>;
   mediaComments(mediaId: string, maxPages?: number): Promise<IgComment[]>;
   mediaInfo(mediaId: string): Promise<MediaSummary>;
+  /** URL temporal de la miniatura del post (las de Instagram caducan: pedirla cada vez). */
+  thumbnail(mediaId: string): Promise<string | null>;
   /** Busca entre tus posts el que tenga ese shortcode (del link). */
   findMediaByShortcode(igUserId: string, shortcode: string, maxPages?: number): Promise<string | null>;
   /** Datos de la cuenta. Con Instagram Login usa /me; con Unified login, /{IG_USER_ID}. */
@@ -117,6 +119,13 @@ export function createIgApi(
       return out;
     },
     mediaInfo: (mediaId) => call("GET", `/${mediaId}?fields=id,timestamp,comments_count`),
+    async thumbnail(mediaId) {
+      const r = await call<{ media_type?: string; media_url?: string; thumbnail_url?: string }>(
+        "GET",
+        `/${mediaId}?fields=media_type,media_url,thumbnail_url`,
+      );
+      return r.thumbnail_url ?? (r.media_type === "VIDEO" ? null : r.media_url) ?? null;
+    },
     async findMediaByShortcode(igUserId, shortcode, maxPages = 20) {
       let path: string | null = `/${igUserId}/media?fields=id,shortcode,permalink&limit=100`;
       for (let i = 0; path && i < maxPages; i++) {
