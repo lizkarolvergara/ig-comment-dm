@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
   const store = supabaseStore();
-  const [s, events] = await Promise.all([store.getState(), store.recentEvents(500)]);
+  const [s, events, rules] = await Promise.all([store.getState(), store.recentEvents(500), store.activeKeywords()]);
   const matched = events.filter((e) => e.matched);
   const daysLeft = s.token_expires_at
     ? Math.floor((new Date(s.token_expires_at).getTime() - Date.now()) / 86400000)
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     .slice(0, 100)
     .map(
       (e) =>
-        `<tr><td>${esc(new Date(e.created_at!).toLocaleString("es", { timeZone: TZ }))}</td><td>@${esc(e.username)}</td><td>${esc(e.text)}</td><td>${yes(e.dm_sent)}</td><td>${yes(e.replied)}</td><td class="err">${esc(e.error)}</td></tr>`,
+        `<tr><td>${esc(new Date(e.created_at!).toLocaleString("es", { timeZone: TZ }))}</td><td>@${esc(e.username)}</td><td>${esc(e.text)}</td><td>${e.dm_sent ? "✅" : e.dm_undeliverable ? "🚫 no entregable" : "—"}</td><td>${yes(e.replied)}</td><td class="err">${esc(e.error)}</td></tr>`,
     )
     .join("");
 
@@ -43,6 +43,16 @@ export async function GET(req: Request) {
 <div class="card">Token: <b>${daysLeft === null ? "no caduca" : `${daysLeft} días`}</b> ${s.last_refresh_error ? `<span class="err">(${esc(s.last_refresh_error)})</span>` : ""}</div>
 <div class="card">Último chequeo: ${esc(s.last_poll_at ? new Date(s.last_poll_at).toLocaleString("es", { timeZone: TZ }) : "nunca")} ${s.last_poll_error ? `<span class="err">${esc(s.last_poll_error)}</span>` : "✅"}</div>
 <div class="card">Coincidencias: <b>${matched.length}</b> · completas: <b>${ok}</b> · con error: <b>${failed.length}</b></div>
+<h2>Reglas activas</h2>
+<table><tr><th>Palabra</th><th>Post</th><th>Estado</th><th>Envíos</th></tr>${rules
+    .map((k: any) => {
+      const n = matched.filter((e) => e.keyword_id === k.id && e.dm_sent).length;
+      const where = k.post_url ? `<a href="${esc(k.post_url)}">${esc(k.post_url)}</a>` : k.media_id ? esc(k.media_id) : "<b>todos los posts</b>";
+      const st = k.resolve_error ? `<span class="err">${esc(k.resolve_error)}</span>` : k.post_url && !k.media_id ? "buscando post…" : "✅";
+      return `<tr><td>${esc(k.keyword)}</td><td>${where}</td><td>${st}</td><td>${n}</td></tr>`;
+    })
+    .join("")}</table>
+<h2>Registro</h2>
 <p><a href="?token=${esc(url.searchParams.get("token"))}&format=csv">Descargar registro (CSV)</a></p>
 <table><tr><th>Fecha</th><th>Usuario</th><th>Comentario</th><th>DM</th><th>Pública</th><th>Error</th></tr>${rows}</table></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });

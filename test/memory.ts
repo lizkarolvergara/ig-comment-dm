@@ -19,15 +19,16 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
   const store: Store = {
     getState: async () => ({ ...st }),
     updateState: async (p) => void (st = { ...st, ...p }),
-    activeKeywords: async () => keywords.filter((k) => k.active),
+    activeKeywords: async () => keywords.filter((k) => k.active).map((k) => ({ ...k })),
+    updateKeyword: async (id, p) => void Object.assign(keywords.find((k) => k.id === id)!, p),
     insertEvent: async (row) => {
       if (events.has(row.comment_id)) return false;
-      events.set(row.comment_id, { ...row, dm_sent: false, replied: false, attempts: 0, error: null });
+      events.set(row.comment_id, { ...row, dm_sent: false, dm_undeliverable: false, replied: false, attempts: 0, error: null });
       return true;
     },
     claim: async (id) => {
       const e = events.get(id);
-      if (!e || !e.matched || (e.dm_sent && e.replied)) return null;
+      if (!e || !e.matched || e.replied) return null;
       if (e.locked_until && new Date(e.locked_until) > new Date()) return null;
       e.locked_until = new Date(Date.now() + 60000).toISOString();
       e.attempts++;
@@ -40,12 +41,12 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     mediaStates: async () => new Map(mediaState),
     saveMediaState: async (id, n) => void mediaState.set(id, { comments_count: n, scanned_at: new Date().toISOString() }),
     pendingMediaIds: async () =>
-      new Set([...events.values()].filter((e) => e.matched && (!e.dm_sent || !e.replied)).map((e) => e.media_id!)),
+      new Set([...events.values()].filter((e) => e.matched && !e.replied).map((e) => e.media_id!)),
   };
   return { store, events, mediaState, state: () => st };
 }
 
-export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: Record<string, IgComment[]>; media?: { id: string; timestamp: string; comments_count?: number }[] } = {}) {
+export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: Record<string, IgComment[]>; media?: { id: string; timestamp: string; comments_count?: number }[]; shortcodes?: Record<string, string> } = {}) {
   const calls = { dm: [] as string[], reply: [] as { id: string; text: string }[], scanned: [] as string[] };
   let failDm = opts.failDm ?? 0;
   let failReply = opts.failReply ?? 0;
@@ -61,6 +62,8 @@ export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: R
       return { id: `r_${id}` };
     },
     recentMedia: async () => opts.media ?? [],
+    mediaInfo: async (id) => opts.media?.find((m) => m.id === id) ?? { id, timestamp: "" },
+    findMediaByShortcode: async (_u, sc) => opts.shortcodes?.[sc] ?? null,
     mediaComments: async (m) => {
       calls.scanned.push(m);
       return opts.comments?.[m] ?? [];

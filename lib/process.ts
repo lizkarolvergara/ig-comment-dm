@@ -1,4 +1,4 @@
-import type { IgApi } from "./instagram.js";
+import { GraphError, type IgApi } from "./instagram.js";
 import { pickKeyword, pickVariant } from "./match.js";
 import type { Store } from "./store.js";
 
@@ -20,7 +20,7 @@ export interface Deps {
 export const MAX_ATTEMPTS = 6;
 const SEVEN_DAYS_MS = 7 * 24 * 3600 * 1000;
 
-export type Outcome = "self" | "duplicate" | "no-match" | "busy" | "done" | "partial" | "expired";
+export type Outcome = "self" | "duplicate" | "no-match" | "busy" | "done" | "fallback" | "partial" | "expired";
 
 export async function processComment(c: IncomingComment, source: string, deps: Deps): Promise<Outcome> {
   const { store, ig } = deps;
@@ -62,11 +62,13 @@ export async function processComment(c: IncomingComment, source: string, deps: D
 
   const errors: string[] = [];
   const created = new Date(ev.comment_created_at ?? now.toISOString()).getTime();
+  const lastAttempt = ev.attempts >= MAX_ATTEMPTS;
 
-  // 4. DM (private reply): lo más importante, va primero.
-  if (!ev.dm_sent) {
+  // 4. DM (private reply) primero: según el resultado elegimos la respuesta pública.
+  if (!ev.dm_sent && !ev.dm_undeliverable) {
+    let undeliverable: string | null = null;
     if (now.getTime() - created > SEVEN_DAYS_MS) {
-      errors.push("DM: el comentario tiene más de 7 días, Meta ya no permite private reply");
+      undeliverable = "DM: el comentario tiene más de 7 días, Meta ya no permite private reply";
     } else if (!state.ig_user_id) {
       errors.push("DM: falta ig_user_id en app_state");
     } else {
@@ -75,15 +77,24 @@ export async function processComment(c: IncomingComment, source: string, deps: D
         ev.dm_sent = true;
         await store.updateEvent(c.id, { dm_sent: true, dm_sent_at: now.toISOString(), dm_message_id: r.message_id });
       } catch (e) {
-        errors.push(`DM: ${(e as Error).message}`);
+        const msg = `DM: ${(e as Error).message}`;
+        if (isUndeliverable(e)) undeliverable = msg;
+        else if (lastAttempt) undeliverable = `${msg} (último intento)`;
+        else errors.push(msg); // transitorio o desconocido: se reintenta, sin responder en público todavía
       }
+    }
+    if (undeliverable) {
+      ev.dm_undeliverable = true;
+      errors.push(undeliverable);
+      await store.updateEvent(c.id, { dm_undeliverable: true });
     }
   }
 
-  // 5. Respuesta pública.
-  if (!ev.replied) {
+  // 5. Respuesta pública: la normal si llegó el DM, la alternativa ("escríbeme primero") si no se puede entregar.
+  if (!ev.replied && (ev.dm_sent || ev.dm_undeliverable)) {
+    const text = ev.dm_sent ? keyword.public_reply : keyword.fallback_reply || DEFAULT_FALLBACK_REPLY;
     try {
-      const r = await ig.replyToComment(c.id, pickVariant(keyword.public_reply));
+      const r = await ig.replyToComment(c.id, pickVariant(text));
       ev.replied = true;
       await store.updateEvent(c.id, { replied: true, replied_at: now.toISOString(), reply_id: r.id });
     } catch (e) {
@@ -93,5 +104,22 @@ export async function processComment(c: IncomingComment, source: string, deps: D
 
   await store.updateEvent(c.id, { error: errors.length ? errors.join(" · ") : null, locked_until: null });
   if (errors.some((e) => e.includes("más de 7 días"))) return "expired";
+  if (ev.dm_undeliverable && ev.replied) return "fallback";
   return ev.dm_sent && ev.replied ? "done" : "partial";
+}
+
+export const DEFAULT_FALLBACK_REPLY =
+  "¡No pude enviarte el mensaje! 😢 Escríbeme por DM y te lo paso. | No me deja enviarte el DM 🙈 Escríbeme primero y te lo mando.";
+
+/**
+ * Errores de Meta que significan "a esta persona no se le puede entregar el DM" (no se reintentan).
+ * 551: persona no disponible. 10: fuera de la ventana permitida / sin permiso para escribirle.
+ * 100 con estos subcódigos: usuario no encontrado.
+ * OJO: confirmar con errores reales; el registro guarda código y subcódigo para ajustarlo.
+ */
+export function isUndeliverable(e: unknown): boolean {
+  if (!(e instanceof GraphError) || e.transient) return false;
+  if (e.code === 551 || e.code === 10) return true;
+  if (e.code === 100 && [2018001, 2534014, 2018109].includes(e.subcode ?? -1)) return true;
+  return false;
 }

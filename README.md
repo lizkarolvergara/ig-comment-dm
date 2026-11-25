@@ -4,7 +4,7 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
 
 ## Cómo funciona
 
-- **Lector (`/api/poll`)**: cada minuto `pg_cron` (Supabase) revisa tus últimos 50 posts (`POLL_MEDIA_LIMIT`) y responde a comentarios de los últimos 7 días, aunque el post sea antiguo. Solo relee un post si cambió su número de comentarios, si tiene envíos pendientes o cada 15 minutos. Funciona con Standard Access, sin App Review.
+- **Lector (`/api/poll`)**: cada minuto `pg_cron` (Supabase) revisa los posts que tienen reglas activas y responde a comentarios de los últimos 7 días, aunque el post sea antiguo. Solo relee un post si cambió su número de comentarios, si tiene envíos pendientes o cada 15 minutos. Funciona con Standard Access, sin App Review.
 - **Webhook (`/api/webhook`)**: tiempo real. Meta solo envía webhooks de `comments` a apps con **Advanced Access (App Review)**. Mientras tanto, el lector cubre todo y después queda como respaldo.
 - Ambos usan la misma lógica (`lib/process.ts`): ignora tus propios comentarios, registra cada comentario en `events` (idempotente por `comment_id`), reserva el comentario con un lock en la base de datos para no enviar dos veces, manda el DM primero y luego la respuesta pública, y guarda el resultado o el error. Si algo falla, el siguiente chequeo reintenta solo lo que faltó (hasta 6 intentos).
 - **Token**: con Unified login es un token de usuario del sistema que no caduca y vive solo en la variable `IG_ACCESS_TOKEN`. El cron diario (`/api/refresh-token`) comprueba que siga funcionando y avisa a `ALERT_URL` si no. Si usas una app antigua con Instagram Login (`GRAPH_HOST=graph.instagram.com`), ese mismo cron renueva el token de 60 días.
@@ -18,10 +18,10 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
    - En *API setup with Unified login*, paso 1: elige esa configuración. Paso 2: *Generar token*.
 3. **Supabase**: aplica las migraciones de `supabase/migrations/` en orden y crea una fila en `keywords`:
    ```sql
-   insert into keywords (keyword, dm_message, public_reply)
-   values ('LUPA', '¡Hola! Aquí tienes el enlace: https://lupa.art/explore', '¡Te lo envié por DM! 📩 | ¡Revisa tus mensajes! ✨ | ¡Listo, mira tu DM! 🙌');
+   insert into keywords (post_url, keyword, dm_message, public_reply)
+   values ('https://www.instagram.com/reel/XXXX/', 'LUPA', '¡Hola! Aquí tienes el enlace: https://lupa.art/explore', '¡Te lo envié por DM! 📩 | ¡Revisa tus mensajes! ✨');
    ```
-   `public_reply` acepta variantes separadas por `|` (se elige una al azar para no repetir siempre el mismo texto). `media_id` opcional para limitar la palabra a un post.
+   Cada regla va atada a un post: pon el link en `post_url` y el bot completa `media_id` solo (los errores se ven en `resolve_error` y en la página de estado). La misma palabra puede tener mensajes distintos en posts distintos; los posts sin regla se ignoran. Una regla sin `post_url` ni `media_id` aplica a todos los posts. `public_reply` acepta variantes separadas por `|` (se elige una al azar para no repetir siempre el mismo texto).
 4. **Variables de entorno**: copia `.env.example` a `.env` y, en Vercel, a *Settings → Environment Variables*.
 5. **Token**: ponlo en Vercel como `IG_ACCESS_TOKEN`, junto con `IG_USER_ID`.
 6. **Vercel**: importa el repo y despliega. Luego ejecuta `supabase/cron.sql` en el SQL editor de Supabase.

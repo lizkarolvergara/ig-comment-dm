@@ -40,6 +40,9 @@ export interface IgApi {
   replyToComment(commentId: string, text: string): Promise<{ id: string }>;
   recentMedia(igUserId: string, limit?: number): Promise<MediaSummary[]>;
   mediaComments(mediaId: string, maxPages?: number): Promise<IgComment[]>;
+  mediaInfo(mediaId: string): Promise<MediaSummary>;
+  /** Busca entre tus posts el que tenga ese shortcode (del link). */
+  findMediaByShortcode(igUserId: string, shortcode: string, maxPages?: number): Promise<string | null>;
   /** Datos de la cuenta. Con Instagram Login usa /me; con Unified login, /{IG_USER_ID}. */
   account(igUserId?: string): Promise<{ id: string; username: string }>;
   refreshToken(): Promise<{ access_token: string; expires_in: number }>;
@@ -112,6 +115,17 @@ export function createIgApi(
         path = r.paging?.next ? r.paging.next.replace(/^https:\/\/graph\.(instagram|facebook)\.com\/v[\d.]+/, "") : null;
       }
       return out;
+    },
+    mediaInfo: (mediaId) => call("GET", `/${mediaId}?fields=id,timestamp,comments_count`),
+    async findMediaByShortcode(igUserId, shortcode, maxPages = 20) {
+      let path: string | null = `/${igUserId}/media?fields=id,shortcode,permalink&limit=100`;
+      for (let i = 0; path && i < maxPages; i++) {
+        const r: { data: { id: string; shortcode?: string; permalink?: string }[]; paging?: { next?: string } } = await call("GET", path);
+        const hit = r.data.find((m) => m.shortcode === shortcode || m.permalink?.includes(`/${shortcode}/`));
+        if (hit) return hit.id;
+        path = r.paging?.next ? r.paging.next.replace(/^https:\/\/graph\.(instagram|facebook)\.com\/v[\d.]+/, "") : null;
+      }
+      return null;
     },
     async account(igUserId) {
       if (HOST.includes("graph.instagram.com")) {
