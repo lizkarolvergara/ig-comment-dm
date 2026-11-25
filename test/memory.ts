@@ -53,6 +53,13 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     saveMediaState: async (id, n) => void mediaState.set(id, { comments_count: n, scanned_at: new Date().toISOString() }),
     pendingMediaIds: async () =>
       new Set([...events.values()].filter((e) => e.matched && !e.replied).map((e) => e.media_id!)),
+    unresolvedEvents: async () => [...events.values()].filter((e) => e.matched && (!e.replied || !e.dm_sent)),
+    resetEvent: async (id) => {
+      const e = events.get(id);
+      if (!e || !e.matched || e.replied) return false;
+      Object.assign(e, { attempts: 0, error: null, locked_until: null, dm_undeliverable: false });
+      return true;
+    },
   };
   return { store, events, mediaState, state: () => st };
 }
