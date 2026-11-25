@@ -26,3 +26,14 @@ describe("pickVariant", () => {
     expect(pickVariant("solo una")).toBe("solo una");
   });
 });
+
+describe("shortcodeFromUrl", async () => {
+  const { shortcodeFromUrl } = await import("../lib/match.js");
+  it.each([
+    ["https://www.instagram.com/p/DAbc_12-x/", "DAbc_12-x"],
+    ["https://instagram.com/reel/XYZ?igsh=abc", "XYZ"],
+    ["https://www.instagram.com/hueleanaranjas/p/QQQ/", "QQQ"],
+    ["https://www.instagram.com/reels/RRR/", "RRR"],
+    ["https://lupa.art", null],
+  ])("%s", (u, sc) => expect(shortcodeFromUrl(u)).toBe(sc));
+});

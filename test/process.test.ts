@@ -152,3 +152,40 @@ describe("pollRecent", () => {
     expect(calls.dm).toEqual(["C"]);
   });
 });
+
+describe("reglas por post", () => {
+  const now = new Date("2026-11-25T18:00:00Z");
+  const recent = "2026-11-25T17:00:00Z";
+  const rule = (id: number, post_url: string, dm: string) => ({ ...LUPA, id, post_url, media_id: null, dm_message: dm });
+
+  it("misma palabra, mensaje distinto según el post; posts sin regla se ignoran", async () => {
+    const { pollRecent } = await import("../lib/poll.js");
+    const kws = [rule(10, "https://www.instagram.com/p/AAA/", "msg A"), rule(11, "https://www.instagram.com/reel/BBB/?igsh=x", "msg B")];
+    const { store, events } = memoryStore(kws);
+    const sent: Record<string, string> = {};
+    const { ig } = fakeIg({
+      shortcodes: { AAA: "MA", BBB: "MB" },
+      media: [{ id: "MA", timestamp: recent, comments_count: 1 }, { id: "MB", timestamp: recent, comments_count: 1 }, { id: "MC", timestamp: recent, comments_count: 1 }],
+      comments: {
+        MA: [{ id: "c1", text: "LUPA", timestamp: recent, from: { id: "U1" } }],
+        MB: [{ id: "c2", text: "lupa", timestamp: recent, from: { id: "U2" } }],
+        MC: [{ id: "c3", text: "LUPA", timestamp: recent, from: { id: "U3" } }],
+      },
+    });
+    const orig = ig.sendPrivateReply;
+    ig.sendPrivateReply = async (u, id, text) => ((sent[id] = text), orig(u, id, text));
+    await pollRecent({ store, ig }, now);
+    expect(sent).toEqual({ c1: "msg A", c2: "msg B" });
+    expect(events.has("c3")).toBe(false);
+    expect(kws.map((k) => k.media_id)).toEqual(["MA", "MB"]);
+  });
+
+  it("guarda un error si el link no es de tu cuenta, sin romper el resto", async () => {
+    const { pollRecent } = await import("../lib/poll.js");
+    const kws = [rule(12, "https://www.instagram.com/p/ZZZ/", "x")];
+    const { store } = memoryStore(kws);
+    const { ig } = fakeIg();
+    await pollRecent({ store, ig }, now);
+    expect((kws[0] as any).resolve_error).toContain("No encontré");
+  });
+});

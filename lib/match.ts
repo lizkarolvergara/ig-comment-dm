@@ -4,7 +4,17 @@ export interface Keyword {
   dm_message: string;
   public_reply: string;
   media_id: string | null;
+  post_url?: string | null;
   active: boolean;
+}
+
+/** Una regla es global solo si no tiene ni post_url ni media_id. */
+export const isGlobal = (k: Keyword) => !k.media_id && !k.post_url;
+
+/** Extrae el shortcode de un link de Instagram: instagram.com/p/ABC123/ -> "ABC123". */
+export function shortcodeFromUrl(url: string): string | null {
+  const m = url.match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  return m?.[1] ?? null;
 }
 
 /** Minúsculas y sin tildes: "Lúpa" -> "lupa". */
@@ -28,7 +38,7 @@ export function containsKeyword(text: string, keyword: string): boolean {
 export function pickKeyword(text: string, mediaId: string | null, keywords: Keyword[]): Keyword | null {
   const active = keywords.filter((k) => k.active);
   const specific = active.filter((k) => k.media_id && k.media_id === mediaId);
-  const global = active.filter((k) => !k.media_id);
+  const global = active.filter(isGlobal);
   return [...specific, ...global].find((k) => containsKeyword(text, k.keyword)) ?? null;
 }
 

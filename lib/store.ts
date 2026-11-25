@@ -37,6 +37,7 @@ export interface Store {
   getState(): Promise<AppState>;
   updateState(patch: Partial<AppState>): Promise<void>;
   activeKeywords(): Promise<Keyword[]>;
+  updateKeyword(id: number, patch: Partial<Keyword> & { resolve_error?: string | null }): Promise<void>;
   /** Inserta si no existe. Devuelve true si era nuevo. */
   insertEvent(row: Omit<EventRow, "dm_sent" | "replied" | "attempts" | "error">): Promise<boolean>;
   /** Reserva el evento (lock ~60s). null si ya está completo o lo tiene otro proceso. */
@@ -69,6 +70,9 @@ export function supabaseStore(client?: SupabaseClient): Store {
     },
     async activeKeywords() {
       return check(await db.from("keywords").select("*").eq("active", true)) as Keyword[];
+    },
+    async updateKeyword(id, patch) {
+      check(await db.from("keywords").update(patch).eq("id", id));
     },
     async insertEvent(row) {
       const data = check(
