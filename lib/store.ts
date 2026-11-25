@@ -39,6 +39,12 @@ export interface Store {
   updateState(patch: Partial<AppState>): Promise<void>;
   activeKeywords(): Promise<Keyword[]>;
   updateKeyword(id: number, patch: Partial<Keyword> & { resolve_error?: string | null }): Promise<void>;
+  allKeywords(): Promise<Keyword[]>;
+  createKeyword(row: Partial<Keyword>): Promise<Keyword>;
+  /** Borra una regla. Falla si ya tiene envíos registrados (para no perder la prueba). */
+  deleteKeyword(id: number): Promise<void>;
+  /** Conteo de envíos por regla: { keyword_id: { dm, fallback, pending } } */
+  ruleStats(): Promise<Record<number, { dm: number; fallback: number; pending: number }>>;
   /** Inserta si no existe. Devuelve true si era nuevo. */
   insertEvent(row: Omit<EventRow, "dm_sent" | "dm_undeliverable" | "replied" | "attempts" | "error">): Promise<boolean>;
   /** Reserva el evento (lock ~60s). null si ya está completo o lo tiene otro proceso. */
@@ -71,6 +77,30 @@ export function supabaseStore(client?: SupabaseClient): Store {
     },
     async activeKeywords() {
       return check(await db.from("keywords").select("*").eq("active", true)) as Keyword[];
+    },
+    async allKeywords() {
+      return check(await db.from("keywords").select("*").order("created_at", { ascending: false })) as Keyword[];
+    },
+    async createKeyword(row) {
+      return check(await db.from("keywords").insert(row).select("*").single()) as Keyword;
+    },
+    async deleteKeyword(id) {
+      const r = await db.from("keywords").delete().eq("id", id);
+      if (r.error?.code === "23503") throw new Error("Esta regla ya tiene envíos registrados: desactívala en vez de borrarla.");
+      check(r);
+    },
+    async ruleStats() {
+      const data = check(
+        await db.from("events").select("keyword_id,dm_sent,dm_undeliverable,replied").eq("matched", true),
+      ) as { keyword_id: number; dm_sent: boolean; dm_undeliverable: boolean; replied: boolean }[];
+      const out: Record<number, { dm: number; fallback: number; pending: number }> = {};
+      for (const e of data) {
+        const s = (out[e.keyword_id] ??= { dm: 0, fallback: 0, pending: 0 });
+        if (e.dm_sent) s.dm++;
+        else if (e.dm_undeliverable) s.fallback++;
+        if (!e.replied) s.pending++;
+      }
+      return out;
     },
     async updateKeyword(id, patch) {
       check(await db.from("keywords").update(patch).eq("id", id));

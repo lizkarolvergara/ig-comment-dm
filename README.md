@@ -8,7 +8,7 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
 - **Webhook (`/api/webhook`)**: tiempo real. Meta solo envía webhooks de `comments` a apps con **Advanced Access (App Review)**. Mientras tanto, el lector cubre todo y después queda como respaldo.
 - Ambos usan la misma lógica (`lib/process.ts`): ignora tus propios comentarios, registra cada comentario en `events` (idempotente por `comment_id`), reserva el comentario con un lock en la base de datos para no enviar dos veces, manda el DM primero y luego la respuesta pública, y guarda el resultado o el error. Si algo falla, el siguiente chequeo reintenta solo lo que faltó (hasta 6 intentos).
 - **Token**: con Unified login es un token de usuario del sistema que no caduca y vive solo en la variable `IG_ACCESS_TOKEN`. El cron diario (`/api/refresh-token`) comprueba que siga funcionando y avisa a `ALERT_URL` si no. Si usas una app antigua con Instagram Login (`GRAPH_HOST=graph.instagram.com`), ese mismo cron renueva el token de 60 días.
-- **Estado (`/api/status?token=...`)**: días que le quedan al token, último chequeo, registro de envíos y descarga en CSV (prueba para Lupa).
+- **Panel (`/`)**: login con contraseña (`ADMIN_PASSWORD`, sesión firmada de 30 días). Desde ahí creas, editas, activas o borras reglas por post (al guardar comprueba que el link sea de tu cuenta), y ves el estado del lector y del token y el registro de envíos, con descarga CSV como prueba para las marcas.
 
 ## Configuración
 
@@ -21,7 +21,7 @@ Bot para Instagram: cuando alguien comenta una palabra clave (p. ej. `LUPA`), re
    insert into keywords (post_url, keyword, dm_message, public_reply)
    values ('https://www.instagram.com/reel/XXXX/', 'LUPA', '¡Hola! Aquí tienes el enlace: https://lupa.art/explore', '¡Te lo envié por DM! 📩 | ¡Revisa tus mensajes! ✨');
    ```
-   Cada regla va atada a un post: pon el link en `post_url` y el bot completa `media_id` solo (los errores se ven en `resolve_error` y en la página de estado). La misma palabra puede tener mensajes distintos en posts distintos; los posts sin regla se ignoran. Una regla sin `post_url` ni `media_id` aplica a todos los posts. `public_reply` acepta variantes separadas por `|` (se elige una al azar para no repetir siempre el mismo texto).
+   Cada regla va atada a un post: pon el link en `post_url` y el bot completa `media_id` solo (los errores se ven en `resolve_error` y en la página de estado). La misma palabra puede tener mensajes distintos en posts distintos; los posts sin regla se ignoran. Una regla sin `post_url` ni `media_id` aplica a todos los posts. `keyword` acepta variantes separadas por comas para errores ortográficos (`LUPA, LUPPA, LOPA`) y también frases. `public_reply` y `fallback_reply` aceptan variantes separadas por `|` (se elige una al azar para no repetir siempre el mismo texto).
 4. **Variables de entorno**: copia `.env.example` a `.env` y, en Vercel, a *Settings → Environment Variables*.
 5. **Token**: ponlo en Vercel como `IG_ACCESS_TOKEN`, junto con `IG_USER_ID`.
 6. **Vercel**: importa el repo y despliega. Luego ejecuta `supabase/cron.sql` en el SQL editor de Supabase.
