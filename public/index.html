@@ -21,8 +21,6 @@
   h1 { font-size: 22px; margin: 0; } h1 span { color: var(--accent); }
   h2 { font-size: 17px; margin: 28px 0 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-  .stat b { display: block; font-size: 22px; } .stat small { color: var(--muted); }
   button, .btn { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: 8px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   button.link { border: none; background: none; color: var(--muted); padding: 4px 6px; }
@@ -52,6 +50,19 @@
   .msg { margin-top: 10px; min-height: 1.2em; }
   #login { max-width: 380px; margin: 12vh auto 0; }
   .hidden { display: none !important; }
+  .status { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); margin: -8px 0 16px; }
+  .status b { color: var(--text); font-weight: 600; }
+  .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .dot.ok { background: var(--ok); } .dot.err { background: var(--err); }
+  nav.tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+  nav.tabs a { color: var(--muted); text-decoration: none; padding: 10px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-weight: 600; }
+  nav.tabs a.active { color: var(--text); border-bottom-color: var(--accent); }
+  .badge { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; text-align: center; }
+  .badge.alert { background: var(--err); color: #fff; }
+  .tabhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; min-height: 40px; }
+  .tabhead p { margin: 0; color: var(--muted); font-size: 14px; }
+  .tabhead .btn, .tabhead button { white-space: nowrap; }
+  @media (max-width: 600px) { nav.tabs a { flex: 1; text-align: center; padding: 10px 6px; } .wide { display: none; } }
   .pgroup { display: grid; grid-template-columns: 64px 1fr; gap: 8px 16px; }
   .pgroup + .pgroup { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
   .pitem { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
@@ -79,16 +90,28 @@
       <button class="link" id="logout">Salir</button>
     </header>
 
-    <div class="grid" id="stats"></div>
+    <div class="status" id="stats"></div>
 
-    <h2>Reglas por post <button class="primary" id="newRule">+ Nueva regla</button></h2>
-    <div class="card" id="rules"><p style="color:var(--muted)">Cargando…</p></div>
+    <nav class="tabs">
+      <a href="#reglas" data-tab="reglas">Reglas<span class="wide"> por post</span><span class="badge" id="rulesCount"></span></a>
+      <a href="#pendientes" data-tab="pendientes">Sin responder<span class="badge" id="pendingBadge"></span></a>
+      <a href="#registro" data-tab="registro">Registro</a>
+    </nav>
 
-    <h2>Sin responder <small id="pendingCount" style="color:var(--muted);font-weight:400;font-size:14px"></small></h2>
-    <div class="card" id="pending"><p style="color:var(--muted);margin:0">Cargando…</p></div>
+    <section data-panel="reglas">
+      <div class="tabhead"><p>Cada regla responde solo en su post.</p><button class="primary" id="newRule">+ Nueva regla</button></div>
+      <div class="card" id="rules"><p style="color:var(--muted);margin:0">Cargando…</p></div>
+    </section>
 
-    <h2>Registro <a class="btn" href="/api/status?format=csv">Descargar CSV</a></h2>
-    <div class="card scroll"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Comentario</th><th>Regla</th><th>DM</th><th>Pública</th><th>Error</th></tr></thead><tbody id="events"></tbody></table></div>
+    <section data-panel="pendientes" class="hidden">
+      <div class="tabhead"><p id="pendingCount">Comentarios que coincidieron pero no se completaron.</p></div>
+      <div class="card" id="pending"><p style="color:var(--muted);margin:0">Cargando…</p></div>
+    </section>
+
+    <section data-panel="registro" class="hidden">
+      <div class="tabhead"><p>Últimos 100 envíos. El CSV trae todo.</p><a class="btn" href="/api/status?format=csv">Descargar CSV</a></div>
+      <div class="card scroll"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Comentario</th><th>Regla</th><th>DM</th><th>Pública</th><th>Error</th></tr></thead><tbody id="events"></tbody></table></div>
+    </section>
   </section>
 </main>
 
@@ -139,11 +162,13 @@ async function load() {
   rules = rs.rules;
   $("#account").textContent = st.account ? "@" + st.account : "";
   const pollOk = st.poll.at && Date.now() - new Date(st.poll.at) < 5 * 60000 && !st.poll.error;
+  const tokenOk = !st.token.error;
   $("#stats").innerHTML = `
-    <div class="card stat"><small>Lector</small><b class="${pollOk ? "ok" : "err"}">${pollOk ? "Activo" : "Revisar"}</b><small>${st.poll.error ? esc(st.poll.error) : "Último chequeo " + fmt(st.poll.at)}</small></div>
-    <div class="card stat"><small>Token</small><b class="${st.token.error ? "err" : "ok"}">${st.token.error ? "Error" : st.token.daysLeft == null ? "No caduca" : st.token.daysLeft + " días"}</b><small>${st.token.error ? esc(st.token.error) : "Verificado " + fmt(st.token.checkedAt)}</small></div>
-    <div class="card stat"><small>DMs enviados</small><b>${st.totals.dm}</b><small>${st.totals.matched} coincidencias</small></div>
-    <div class="card stat"><small>Sin DM / con error</small><b class="${st.totals.withError ? "warn" : ""}">${st.totals.fallback} / ${st.totals.withError}</b><small>respuesta alternativa / error</small></div>`;
+    <span title="${esc(st.poll.error || "")}"><i class="dot ${pollOk ? "ok" : "err"}"></i>Lector <b>${pollOk ? "activo" : "revisar"}</b>${st.poll.error ? ` <span class="err">${esc(st.poll.error)}</span>` : ""}</span>
+    <span title="${esc(st.token.error || "")}"><i class="dot ${tokenOk ? "ok" : "err"}"></i>Token <b>${!tokenOk ? "con error" : st.token.daysLeft == null ? "no caduca" : st.token.daysLeft + " días"}</b></span>
+    <span><b>${st.totals.dm}</b> DMs de ${st.totals.matched} coincidencias</span>
+    <span><b>${st.totals.fallback}</b> sin DM · <b class="${st.totals.withError ? "warn" : ""}">${st.totals.withError}</b> con error</span>`;
+  $("#rulesCount").textContent = rs.rules.filter((r) => r.active).length || "";
   renderRules();
   renderPending(pd.groups);
   const byId = Object.fromEntries(rules.map((r) => [r.id, r.keyword.split(",")[0]]));
@@ -190,7 +215,10 @@ const left = (h) => h >= 48 ? `quedan ${Math.floor(h / 24)} días para el DM` : 
 function renderPending(groups) {
   const n = groups.reduce((a, g) => a + g.items.length, 0);
   const urgent = groups.reduce((a, g) => a + g.items.filter((i) => i.status === "fallo" || i.status === "reintentando").length, 0);
-  $("#pendingCount").innerHTML = n ? `· ${n}${urgent ? ` <span class="err">(${urgent} por revisar)</span>` : ""}` : "";
+  $("#pendingCount").innerHTML = n ? `${n} sin completar${urgent ? ` · <span class="err">${urgent} por revisar</span>` : ""}` : "Comentarios que coincidieron pero no se completaron.";
+  const badge = $("#pendingBadge");
+  badge.textContent = urgent || n || "";
+  badge.classList.toggle("alert", urgent > 0);
   if (!n) { $("#pending").innerHTML = `<p class="ok" style="margin:0">✓ Todo respondido.</p>`; return; }
   $("#pending").innerHTML = groups.map((g) => {
     const thumb = g.media_id
@@ -262,6 +290,15 @@ $("#rules").addEventListener("click", async (ev) => {
     await load();
   } catch (e) { if (e.message !== "401") alert(e.message); }
 });
+
+const TABS = ["reglas", "pendientes", "registro"];
+function showTab() {
+  const t = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "reglas";
+  document.querySelectorAll("[data-panel]").forEach((el) => el.classList.toggle("hidden", el.dataset.panel !== t));
+  document.querySelectorAll("nav.tabs a").forEach((a) => a.classList.toggle("active", a.dataset.tab === t));
+}
+window.addEventListener("hashchange", showTab);
+showTab();
 
 load().catch((e) => { if (e.message !== "401") { show("login"); $("#loginMsg").textContent = e.message; } });
 setInterval(() => { if (!$("#app").classList.contains("hidden") && !$("#editor").open) load().catch(() => {}); }, 30000);
