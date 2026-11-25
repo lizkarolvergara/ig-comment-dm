@@ -3,6 +3,7 @@ import type { Keyword } from "../lib/match.js";
 import type { AppState, EventRow, Store } from "../lib/store.js";
 
 export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) {
+  const mediaState = new Map<string, { comments_count: number | null; scanned_at: string }>();
   const events = new Map<string, EventRow & { locked_until?: string | null }>();
   let st: AppState = {
     ig_user_id: "ME",
@@ -36,12 +37,16 @@ export function memoryStore(keywords: Keyword[], state: Partial<AppState> = {}) 
     knownComments: async (mediaId) =>
       new Map([...events.values()].filter((e) => e.media_id === mediaId).map((e) => [e.comment_id, e])),
     recentEvents: async () => [...events.values()],
+    mediaStates: async () => new Map(mediaState),
+    saveMediaState: async (id, n) => void mediaState.set(id, { comments_count: n, scanned_at: new Date().toISOString() }),
+    pendingMediaIds: async () =>
+      new Set([...events.values()].filter((e) => e.matched && (!e.dm_sent || !e.replied)).map((e) => e.media_id!)),
   };
-  return { store, events, state: () => st };
+  return { store, events, mediaState, state: () => st };
 }
 
-export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: Record<string, IgComment[]>; media?: { id: string; timestamp: string }[] } = {}) {
-  const calls = { dm: [] as string[], reply: [] as { id: string; text: string }[] };
+export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: Record<string, IgComment[]>; media?: { id: string; timestamp: string; comments_count?: number }[] } = {}) {
+  const calls = { dm: [] as string[], reply: [] as { id: string; text: string }[], scanned: [] as string[] };
   let failDm = opts.failDm ?? 0;
   let failReply = opts.failReply ?? 0;
   const ig: IgApi = {
@@ -56,7 +61,10 @@ export function fakeIg(opts: { failDm?: number; failReply?: number; comments?: R
       return { id: `r_${id}` };
     },
     recentMedia: async () => opts.media ?? [],
-    mediaComments: async (m) => opts.comments?.[m] ?? [],
+    mediaComments: async (m) => {
+      calls.scanned.push(m);
+      return opts.comments?.[m] ?? [];
+    },
     account: async () => ({ id: "ME", username: "hueleanaranjas" }),
     refreshToken: async () => ({ access_token: "new", expires_in: 5184000 }),
   };

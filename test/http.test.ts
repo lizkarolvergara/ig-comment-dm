@@ -91,7 +91,7 @@ describe("Unified login (graph.facebook.com)", () => {
   it("lista media de la cuenta por id", async () => {
     const f = vi.fn(async () => new Response(JSON.stringify({ data: [] })));
     await createIgApi(() => "T", { fetchImpl: f as any, version: "v25.0" }).recentMedia("1784");
-    expect((f.mock.calls[0] as any)[0]).toBe("https://graph.facebook.com/v25.0/1784/media?fields=id,timestamp&limit=25");
+    expect((f.mock.calls[0] as any)[0]).toBe("https://graph.facebook.com/v25.0/1784/media?fields=id,timestamp,comments_count&limit=50");
   });
   it("el cron diario solo verifica el token y avisa si falla", async () => {
     const { store, state } = memoryStore([]);

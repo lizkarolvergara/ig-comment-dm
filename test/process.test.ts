@@ -114,3 +114,41 @@ describe("loadDeps", () => {
     expect(state()).toMatchObject({ access_token: "ENV_TOK", ig_user_id: "ME2", ig_username: "liz" });
   });
 });
+
+describe("pollRecent", () => {
+  const { pollRecent } = await_import();
+  function await_import() {
+    return { pollRecent: async (...a: Parameters<typeof import("../lib/poll.js").pollRecent>) => (await import("../lib/poll.js")).pollRecent(...a) };
+  }
+  const now = new Date("2026-11-25T18:00:00Z");
+  const recent = "2026-11-25T17:00:00Z";
+  const old = "2026-10-01T00:00:00Z";
+
+  it("responde a comentarios nuevos en posts antiguos, pero no a comentarios viejos", async () => {
+    const { store } = memoryStore([LUPA]);
+    const { ig, calls } = fakeIg({
+      media: [{ id: "OLDPOST", timestamp: "2025-01-01T00:00:00Z", comments_count: 2 }],
+      comments: { OLDPOST: [{ id: "NEW", text: "LUPA", timestamp: recent, from: { id: "U1" } }, { id: "OLD", text: "LUPA", timestamp: old, from: { id: "U2" } }] },
+    });
+    await pollRecent({ store, ig }, now);
+    expect(calls.dm).toEqual(["NEW"]);
+    expect(calls.reply.map((r) => r.id)).toEqual(["NEW"]);
+  });
+
+  it("no relee un post si no cambió su número de comentarios", async () => {
+    const { store } = memoryStore([LUPA]);
+    const { ig, calls } = fakeIg({ media: [{ id: "P", timestamp: recent, comments_count: 1 }], comments: { P: [{ id: "C", text: "hola", timestamp: recent }] } });
+    await pollRecent({ store, ig }, now);
+    await pollRecent({ store, ig }, now);
+    expect(calls.scanned).toEqual(["P"]);
+  });
+
+  it("relee un post con envíos pendientes aunque no cambie el número", async () => {
+    const { store } = memoryStore([LUPA]);
+    const { ig, calls } = fakeIg({ failDm: 1, media: [{ id: "P", timestamp: recent, comments_count: 1 }], comments: { P: [{ id: "C", text: "lupa", timestamp: recent, from: { id: "U" } }] } });
+    await pollRecent({ store, ig }, now);
+    await pollRecent({ store, ig }, now);
+    expect(calls.scanned).toEqual(["P", "P"]);
+    expect(calls.dm).toEqual(["C"]);
+  });
+});
